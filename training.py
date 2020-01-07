@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
 from utils import BottleNeck, norm_conv
+import pandas as pd
 
 
 class MobileNet112(nn.Module):
@@ -128,6 +129,10 @@ def data_transforms(data_dir='/home/charles/Documents/Dataset/FER2013/imgs', bat
 
 
 def train_model(model, model_acc, optimizer, scheduler, dataloaders, dataset_sizes, model_name, num_epochs=25):
+    row_train_acc = []
+    row_train_los = []
+    row_val_acc = []
+    row_val_los = []
     writer = SummaryWriter('runs/mobilenet_v2_2C_7B_F640_adam')
     since = time.time()
     # if os.path.exists("mobilenet_v2_best_model_adam.pth"):
@@ -210,31 +215,38 @@ def train_model(model, model_acc, optimizer, scheduler, dataloaders, dataset_siz
 
                 model.load_state_dict(best_model_wts)
                 localtime = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
-                new_model_name = model_name.split('.')[0][:28] + '_' + str(
-                    100 * round(desired_best_acc.item(), 4)) + '%_' + localtime
+                new_model_name = model_name + '_' + localtime + str(
+                    100 * round(desired_best_acc.item(), 4)) + '%_'
                 torch.save(model.state_dict(), new_model_name)
-            # Update training or validation information.
-            if phase == 'train':
-                writer.add_scalar('training loss', epoch_loss, epoch + 1)
-                writer.add_scalar('training accuracy', epoch_acc, epoch + 1)
+        # Update training or validation information.
+        if phase == 'train':
+            writer.add_scalar('training loss', epoch_loss, epoch + 1)
+            writer.add_scalar('training accuracy', epoch_acc, epoch + 1)
+            row_train_acc.append(epoch_acc)
+            row_train_los.append(epoch_loss)
 
-            elif phase == 'val':
-                writer.add_scalar('val loss', epoch_loss, epoch + 1)
-                writer.add_scalar('val accuracy', epoch_acc, epoch + 1)
+        elif phase == 'val':
+            writer.add_scalar('val loss', epoch_loss, epoch + 1)
+            writer.add_scalar('val accuracy', epoch_acc, epoch + 1)
+            row_val_acc.append(epoch_acc)
+            row_val_los.append(epoch_loss)
 
-        time_elapse = time.time() - start
-        print('This Epoch costs {:.0f}m {:.0f}s'.format(
-            time_elapse // 60, time_elapse % 60))
-        print()
+    time_elapse = time.time() - start
+    print('This Epoch costs {:.0f}m {:.0f}s'.format(
+        time_elapse // 60, time_elapse % 60))
+    print()
 
     time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60))
+    df_list = [row_train_acc, row_train_los, row_val_acc, row_val_los]
+    df = pd.DataFrame(df_list, index=['train_acc', 'train_loss', 'val_acc', 'val_loss'])
+    df.to_csv('history/traning_record.csv', float_format='%.2f', na_rep="NAN!")
+
+    print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
     print('Best val Acc: {:4f}'.format(best_training_acc))
 
 
 if __name__ == '__main__':
-    model_ft = MobileNet112(7).cuda()
+    model_ft = MobileNet112V1(7).cuda()
     print(model_ft)
 
     # Observe that all parameters are being optimized
@@ -249,4 +261,4 @@ if __name__ == '__main__':
     dataloaders, dataset_sizes = data_transforms(data_dir='/home/charles/Documents/Dataset/FER2013/imgs', batch_size=64)
 
     train_model(model_ft, 0.50, optimizer_ft, exp_lr_scheduler, dataloaders, dataset_sizes,
-                model_name="mobilenet_v2_2C_7B_F960_adam_89%_2019_09_26_12_0etet9_41", num_epochs=80)
+                model_name="MobileNet_V2_DoE2", num_epochs=80)
